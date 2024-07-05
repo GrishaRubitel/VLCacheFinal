@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Player</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+    <h2>Cache Player</h2>
+    <video id="videoPlayer" width="640" height="360" controls>
+        Your browser does not support the video tag.
+    </video>
+
+    <button onclick="goBack()">Назад</button>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async (event) => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoUrl = urlParams.get('videoUrl');
+        const userId = urlParams.get('userId');
+
+        try {
+            const response = await fetch('http://localhost:8100/api/service-api/use-service?url=' + encodeURIComponent(videoUrl), {
+                method: 'GET'
+            });
+            const result = await response.text();
+            handleApiResponse(response.status, result);
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    });
+
+    function handleApiResponse(status, videoSourceUrl) {
+        if (status === 302) { // Found
+            document.getElementById('videoPlayer').src = videoSourceUrl;
+        } else {
+            alert('Failed to fetch video source URL.');
+        }
+    }
+
+    function goBack() {
+        window.history.back();
+    }
+</script>
+
+</body>
+</html>

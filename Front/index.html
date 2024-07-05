@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorization Form</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+    <div id="authForm" class="form-group">
+        <div>
+            <h2>Authorization</h2>
+            <label for="authName">Name</label>
+            <input type="text" id="authName" name="authName" class="in" required>
+            <label for="authPass">Password</label>
+            <input type="password" id="authPass" name="authPass" class="in" required>
+        </div>
+        <button onclick="login()">Login</button>
+        <p>Don't have an account? <a href="javascript:void(0)" onclick="toggleForm()">Sign Up</a></p>
+    </div>
+
+    <div id="signupForm" class="form-group" style="display: none;">
+        <div>
+            <h2>Sign Up</h2>
+            <label for="signupName">Name</label>
+            <input type="text" id="signupName" name="signupName" class="in" required>
+            <label for="signupPass">Password</label>
+            <input type="password" id="signupPass" name="signupPass" class="in" required>
+        </div>
+        <button onclick="signup()">Sign Up</button>
+        <p>Already have an account? <a href="javascript:void(0)" onclick="toggleForm()">Login</a></p>
+    </div>
+</div>
+
+<script src="scriptAuth.js"></script>
+</body>
+</html>
