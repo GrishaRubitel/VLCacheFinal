@@ -1,8 +1,6 @@
 package ru.choomandco.VLCacheFinal.clientSide;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +20,10 @@ import java.sql.Timestamp;
 import java.util.Optional;
 import java.util.logging.Logger;
 
+
+/**
+ * Один из двух основных микросервисов. Занимается обработкой клиентских запросов при помощи OpenAPI
+ */
 @RestController
 @Service
 @RequestMapping("/api/service-api")
@@ -50,15 +52,15 @@ public class ApiHandler {
     @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
 
-    @CrossOrigin(origins = "*")
-    @GetMapping("/trunk-all")
-    private ResponseEntity<String> trunkTables() {
-        kafkaTemplate.send(DATA_TOPIC, PART_TWO_SEND, null, DELETE_ALL_OF_THEM);
-        return new ResponseEntity<>("They are all dead...." ,HttpStatus.ACCEPTED);
-    }
-
-    //Request to use - http://localhost:8100/api/service-api/init-request?url=https://www.youtube.com/watch?v=Oof28u_f_gY&userId=-999
-    //Interesting link - http://localhost:8100/api/service-api/init-request?url=https://www.youtube.com/watch?v=ny3zSTx-v6s&userId=-999
+    /**
+     * Это API нужно для нескольких целей.
+     * 1. Получение ссылки от пользователя и проверка состояния видео на предмет нахождения его на файловом сервере.
+     * 2. Если видео уже закешировано - отдаём пользователю положительный контент
+     * 3. Если видео не загружено - данный микросервис передает запрос на загрузочный микросервис для начала процесса закачки
+     * @param videoUrl Ссылка на видео, которое пользователь хочет посмотреть/скачать
+     * @param userId Id пользователя, в данной версии проекта не используется
+     * @return Возвращает ResponseEntity с одним из нескольких HttpStatus кодовЮ согласно с состоянием закешированности видео
+     */
     @CrossOrigin(origins = "*")
     @GetMapping("/init-request")
     private ResponseEntity<String> initialRequest(
@@ -69,15 +71,8 @@ public class ApiHandler {
         Optional<CacheStatus> cacheStatus = cacheStatusService.selectById(videoUrl);
 
         if (exactVideoInfo.isEmpty()) {
-            String json;
-            try {
-                json = createJson(videoUrl, userId);
-            } catch (Exception e) {
-                log.warning("Error while creating json - " + e.getMessage());
-                return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-            kafkaTemplate.send(DATA_TOPIC, PART_ZERO_SEND, null, json);
-            log.info("New video cacheing - " + json);
+            kafkaTemplate.send(DATA_TOPIC, PART_ZERO_SEND, null, videoUrl);
+            log.info("New video cacheing - " + videoUrl);
             return new ResponseEntity<>("Video is now cacheing!", HttpStatus.CREATED);
         } else {
             Optional<UploadLogs> uploadStatus = uploadLogsService.selectById(videoUrl);
@@ -90,6 +85,13 @@ public class ApiHandler {
         }
     }
 
+    /**
+     * API для авторизация пользователя. Принимает на вход логин и пароль клиента и проверяет на предмет нахождения этих
+     * данных в базе пользователей.
+     * @param name Логин пользователя
+     * @param pass Пароль пользователя
+     * @return Возвращает ответ в формате HttpStatus, зарегистрирован пользователь или нет
+     */
     @CrossOrigin(origins = "*")
     @GetMapping("/login")
     private ResponseEntity<String> userLogin(
@@ -108,6 +110,14 @@ public class ApiHandler {
         }
     }
 
+
+    /**
+     * API для регистрации нового пользователя в сервисе.
+     * @param name Логин нового пользователя
+     * @param pass Пароль нового пользователя
+     * @return Если пользователь уже в базе, возвращаем отрицательный HttpStatus; положительный ответ, если пользователь
+     * успешно зарегистрирован
+     */
     @CrossOrigin(origins = "*")
     @PostMapping("/signup")
     private ResponseEntity<String> userSignUp(
@@ -123,6 +133,11 @@ public class ApiHandler {
         }
     }
 
+    /**
+     * Данное API возвращает клиенту URI/ссылку/путь на видео файл, расположенный на файловом сервере
+     * @param videoUrl Ссылка на видео, которое надо показать
+     * @return Если видео существует на файловом сервере, возвращает положительный ответ и ссылку на файл
+     */
     @CrossOrigin(origins = "*")
     @GetMapping("/use-service")
     private ResponseEntity<String> useServiceStarter(
@@ -136,19 +151,5 @@ public class ApiHandler {
             log.info("Use service request - " + response);
             return new ResponseEntity<>(response, HttpStatus.FOUND);
         }
-    }
-
-    private String createJson(String firstParam, String secondParam) {
-        ObjectNode jsonNode = objectMapper.createObjectNode();
-        jsonNode.put(ApiHandler.JSON_URL_FIELD, firstParam);
-        jsonNode.put(ApiHandler.JSON_USER_ID_FILED, secondParam);
-
-        try {
-            return objectMapper.writeValueAsString(jsonNode);
-        } catch (JsonProcessingException e) {
-            log.warning("Error with objectMapper - " + e.getMessage());
-        }
-
-        return null;
     }
 }

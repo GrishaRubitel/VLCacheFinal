@@ -1,13 +1,9 @@
 package ru.choomandco.VLCacheFinal.fileGarbage.service.videoStreamer;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.services.youtube.YouTube;
 import com.google.api.services.youtube.model.Video;
 import com.google.api.services.youtube.model.VideoListResponse;
 import jakarta.annotation.PostConstruct;
-import org.apache.commons.io.FileUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.TopicPartition;
@@ -19,7 +15,6 @@ import ru.choomandco.VLCacheFinal.fileGarbage.orm.psqlVideos.VideoService;
 import ru.choomandco.VLCacheFinal.fileGarbage.orm.psqlVideos.Videos;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -31,6 +26,10 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+
+/**
+ * Один из двух основных микросервисов. Занимается скачиванием видео по полученной ссылке
+ */
 @Service
 @EnableAsync
 public class VideoController {
@@ -40,28 +39,21 @@ public class VideoController {
     private static final String DOWNLOADER_ID = "downloader";
     private static final String DATA_TOPIC = "data-topic";
     private static final String PART_ZERO = "0";
-    private static final String PART_TWO = "2";
     private static final String SLASH = "/";
     private static final String UNNAMED_DIR = "unnamed_dir";
     private static final String URL_REGEX = "=(\\w+)$";
     private static final String YT_DLP = "yt-dlp";
     private static final String P_FLAG = "-P";
-    private static final String TRUNK_ID = "trunk-id";
     private static final String O_FLAG = "-o";
     private static final String F_FLAG = "-f";
-    private static final String QUALITY_PRESET = "bv[height<=720]+ba[height<=720]";
     private static final String SNIPPET = "snippet";
     private static final String API_KEY = "AIzaSyCHLMWk5-MknRuQpUgWlI5kXgKuvzta0P8";
     private static final String APP_NAME = "VLCash";
-    private static final String DELETE_ALL_OF_THEM = "DELETE ALL OF THEM";
     private static final String SPACE = " ";
     private static final String UNDERSCORE = "_";
     private static final String MP4_POINTED = ".mp4";
     private static final String MP4 = "mp4";
     public static final String URL = "url";
-    public static final String USER_ID = "userId";
-
-    private static Boolean videosExists = false;
 
     private static final Logger log = Logger.getLogger(VideoController.class.getName());
 
@@ -72,32 +64,20 @@ public class VideoController {
     @Autowired
     CacheStatusService cacheStatusService;
 
+    /**
+     * Пост конструкт срабатывает во время поднятия микросервиса. В данном случае он проверяет, что у сервиса имеется в доступе папка, куда будут сохраняться видео
+     */
     @PostConstruct
     private void createVideoDir() {
-        Path path = Path.of(VIDEOS_PATH);
-        if (!Files.exists(path)) {
-            try {
-                Files.createDirectory(path);
-                log.info("Videos's dir created!");
-            } catch (IOException e) {
-                log.warning("Error while creating videos's dir - " + e.getMessage());
-            }
-        }
+        createDir(VIDEOS_PATH);
     }
 
-    @KafkaListener(id = TRUNK_ID, topicPartitions = {
-            @TopicPartition(topic = DATA_TOPIC, partitions = PART_TWO)
-    })
-    private void trunkTable(String message) {
-        if (message.equals(DELETE_ALL_OF_THEM)) {
-            try {
-                FileUtils.cleanDirectory(new File(VIDEOS_PATH));
-            } catch (Exception e) {
-                log.warning("Error while cleaning directory - " + e.getMessage());
-            }
-        }
-    }
-
+    /**
+     * Автоматически поднимаемый Spring'ом Kafka Consumer. В данном случае мы слушаем топик и партицию, в которую
+     * пишет свои сообщения "клиентский" микросервис, а конкретно ссылки на видеоролики и userId.
+     * P.s. В данной версии проекта userId не применяется
+     * @param message json с ссылкой и userId
+     */
     @KafkaListener(id = DOWNLOADER_ID, topicPartitions = {
             @TopicPartition(topic = DATA_TOPIC, partitions = PART_ZERO)
     })
@@ -105,24 +85,23 @@ public class VideoController {
         prepareToDownload(message);
     }
 
-    private void prepareToDownload(String message) {
-        ObjectMapper objectMapper = new ObjectMapper();
-        JsonNode jsonNode = null;
-        try {
-            jsonNode = objectMapper.readTree(message);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-        String url = jsonNode.get(URL).asText();
-        int userId = jsonNode.get(USER_ID).asInt();
-
+    /**
+     * Метод, который извлекает из сообщения, полученным при помощи KafkaListener'a, ссылку и iserId.
+     * После извлеченные данные отправляются в основной метод, который занимается именно скачиванием.
+     * @param url ссылка на видео
+     */
+    private void prepareToDownload(String url) {
         String currDate = getCurrentDate();
         createDir(VIDEOS_PATH + currDate);
 
         Videos newVideo = new Videos();
-        downloadVideo(newVideo, url, VIDEOS_PATH + currDate, userId);
+        downloadVideo(newVideo, url, VIDEOS_PATH + currDate);
     }
 
+    /**
+     * Метод получает на вход какой-то путь до папки и создаёт её, если она не существует
+     * @param path Путь до файла
+     */
     private void createDir(String path) {
         Path filePath = Path.of(path);
         if (!Files.exists(filePath)) {
@@ -130,11 +109,16 @@ public class VideoController {
                 Files.createDirectory(filePath);
                 log.info("Dir Created!");
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                log.warning("Error while creating dir - " + e.getMessage());
             }
         }
     }
 
+    /**
+     * Метод, при помощи регулярного выражения, извлекает из YouTube ссылки id видеоролика
+     * @param fullUrl Полная ссылка на видеоролик
+     * @return Извлеченный id
+     */
     private String getIdFromUrl(String fullUrl) {
         Pattern pattern = Pattern.compile(URL_REGEX);
         Matcher matcher = pattern.matcher(fullUrl);
@@ -144,13 +128,24 @@ public class VideoController {
         return UNNAMED_DIR;
     }
 
+    /**
+     * Метод возвращает сегодняшнюю дату для создания новой папки, в которой будут сохраняться видео, скачиваемые именно сегодня
+     * @return Дату в формате ddmmyyyy
+     */
     private String getCurrentDate() {
         LocalDate currentDate = LocalDate.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DD_MM_YYYY);
         return currentDate.format(formatter);
     }
 
-    private void downloadVideo(Videos newVideo, String videoUrl, String directory, int userId) {
+    /**
+     * Основной сервис микросервиса. Собирает и запускает дополнительный процесс, в котором будет выполнена команда
+     * консольного приложения yt-dlp.
+     * @param newVideo Объект класса Video, данные из которого будут записываться в базу данных
+     * @param videoUrl Полная ссылка на видео, которое необходимо скачать
+     * @param directory Путь до папки, в которую будет скачан видеоролик
+     */
+    private void downloadVideo(Videos newVideo, String videoUrl, String directory) {
         createDir(directory);
 
         String videoTitle;
@@ -161,7 +156,9 @@ public class VideoController {
             videoTitle = String.valueOf(System.currentTimeMillis());
         }
 
-        newVideo = new Videos(videoUrl, userId, videoTitle, directory, new Timestamp(System.currentTimeMillis()));
+        //Перед тем как начать  загрузку видео мы заполняем базу данных необходимыми данными.
+        //На данном этапе мы задаём видео состояние загрузки.
+        newVideo = new Videos(videoUrl, videoTitle, directory, new Timestamp(System.currentTimeMillis()));
         videoService.insertVideo(newVideo);
         uploadLogsService.createZeroProgressUpload(videoUrl);
         cacheStatusService.insertNewCache(videoUrl, false);
@@ -184,6 +181,8 @@ public class VideoController {
             }
 
             int exitCode = process.waitFor();
+            //Отслеживание завршения процесса. Код выхода 0 означает, что видео было упешно скачано.
+            //На этом этапе мы изменяем состояние видео на стороне базы данных на "загружено"
             if (exitCode == 0) {
                 directory = directory + SLASH + videoTitle;
                 newVideo.setFilePath(directory);
@@ -200,6 +199,14 @@ public class VideoController {
         }
     }
 
+    /**
+     * Этот метод обращается к официальным API YouTube'a для извлечения названия скачиваемого видеролика.
+     * Это нужно затем, что yt-dlp может скачать видео и назвать его как ему будет удобно. А значит мы можем занести в БД некорректный путь до видео.
+     * Узнать его название мы сможем лишь прочтением всех файлов в директории.
+     * Во избежании лишних вычислений сервис будт вручную задавать имя, под которым надо сохранить видео.
+     * @param url Ссылка на видео
+     * @return Возвращает название видео "так, как на YouTube"
+     */
     private String getVideoTitle(String url) {
         YouTube youtube = new YouTube.Builder(
                 new com.google.api.client.http.javanet.NetHttpTransport(),
@@ -225,8 +232,12 @@ public class VideoController {
         return formaliseVideoTitle(video.getSnippet().getTitle());
     }
 
+    /**
+     * Метод избавляется от пробелов в названии видео, заменяя их на "_".
+     * @param title Нзвание видео
+     * @return Формализованное название
+     */
     private String formaliseVideoTitle(String title) {
-        title = title.trim().replaceAll(SPACE, UNDERSCORE);
-        return title + MP4_POINTED;
+        return title.trim().replaceAll(SPACE, UNDERSCORE);
     }
 }

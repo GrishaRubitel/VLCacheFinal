@@ -25,11 +25,11 @@ public class VideoService {
     }
 
     public void insertVideo(String url, int userId, String fileName, String path, Timestamp downloadTime) {
-        videoRepository.save(new Videos(url, userId, fileName, path, downloadTime));
+        videoRepository.save(new Videos(url, fileName, path, downloadTime));
     }
 
     public void insertVideo(String url, String fileName, String path, Timestamp downloadTime) {
-        videoRepository.save(new Videos(url, -999, fileName, path, downloadTime));
+        videoRepository.save(new Videos(url, fileName, path, downloadTime));
     }
 
     public void insertVideo(Videos video) {

@@ -21,14 +21,7 @@ public class Videos {
 
     public Videos() {}
 
-    public Videos(String title, String url, String filePath, Timestamp uploadedAt) {
-        this.title = title;
-        this.url = url;
-        this.filePath = filePath;
-        this.uploadedAt = uploadedAt;
-    }
-
-    public Videos(String url, int userId, String title, String filePath, Timestamp uploadedAt) {
+    public Videos(String url, String title, String filePath, Timestamp uploadedAt) {
         this.url = url;
         this.title = title;
         this.filePath = filePath;

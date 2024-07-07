@@ -11,9 +11,11 @@ import org.springframework.kafka.support.serializer.StringOrBytesSerializer;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Конфигурационный класс, нужен для настройки средств обращения к Kafka. Сам класс никаких брокеров не поднимает, а настраивает устанавливаемое соединение к уже существущим сервисам.
+ */
 @Configuration
 public class KafkaConfig {
-    public static final String PORT_GAINER_ID = "portGainer_id";
     @Value(value = "${spring.kafka.bootstrap-servers}")
     private String bootstrapAddress;
 
